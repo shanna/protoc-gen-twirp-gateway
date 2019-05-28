@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package shanna.twirp.gw.example.v1;
+option go_package = "example";
+
+import "google/api/annotations.proto";
+
+// RESTful
+service Haberdasher {
+  rpc ListHats(ListHatsRequest) returns (ListHatsResponse) {
+    option (google.api.http).get = "/v1/hats/";
+  };
+
+  rpc GetHat(GetHatRequest) returns (GetHatResponse) {
+    option (google.api.http).get = "/v1/hats/{id}";
+  }
+
+  rpc CreateHat(CreateHatRequest) returns (CreateHatResponse) {
+    option (google.api.http) = {
+      post: "/v1/hats"
+      body: "*"
+    };
+  };
+
+  rpc UpdateHat(UpdateHatRequest) returns (UpdateHatResponse) {
+    option (google.api.http) = {
+      put: "/v1/hats/{id}"
+      body: "*"
+    };
+  };
+
+  rpc DeleteHat(DeleteHatRequest) returns (DeleteHatResponse) {
+    option (google.api.http).delete = "/v1/hats/{id}";
+  }
+}
+
+message ListHatsRequest {}
+message ListHatsResponse {
+  repeated Hat hats = 1;
+}
+
+message GetHatRequest {
+  string id = 1;
+}
+message GetHatResponse {
+  Hat hat = 1;
+}
+
+message CreateHatRequest {
+  string name = 1;
+}
+message CreateHatResponse{
+  Hat hat = 1;
+}
+
+message UpdateHatRequest {
+  Hat hat = 1;
+}
+message UpdateHatResponse {}
+
+message DeleteHatRequest {
+  string id = 1;
+}
+message DeleteHatResponse {}
+
+message Hat {
+  string id = 1;
+  string name = 2;
+}

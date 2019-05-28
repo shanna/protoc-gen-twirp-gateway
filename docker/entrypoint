@@ -1,0 +1,12 @@
+#!/bin/sh
+set -ex
+
+for proto in $@; do
+  protoc \
+    -I . \
+    -I /vendor \
+    --go_out="." \
+    --twirp_out="." \
+    --twirp-gateway_out="." \
+    $proto
+done
