@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"text/template"
 
 	pgs "github.com/lyft/protoc-gen-star"
@@ -30,7 +31,7 @@ func (g *GatewayModule) InitContext(c pgs.BuildContext) {
 		"hasHttpRule": g.hasHttpRule,
 		"method":      g.method,
 		"pattern":     g.pattern,
-		"handler":     g.handler,
+		"body":        g.body,
 	})
 
 	g.tpl = template.Must(tpl.Parse(tmpl))
@@ -69,17 +70,17 @@ func (g *GatewayModule) method(m pgs.Method) string {
 
 	switch verb := rule.Pattern.(type) {
 	case *annotations.HttpRule_Get:
-		return "GET"
+		return "http.MethodGet"
 	case *annotations.HttpRule_Put:
-		return "PUT"
+		return "http.MethodPut"
 	case *annotations.HttpRule_Post:
-		return "POST"
+		return "http.MethodPost"
 	case *annotations.HttpRule_Delete:
-		return "DELETE"
+		return "http.MethodDelete"
 	case *annotations.HttpRule_Patch:
-		return "PATCH"
+		return "http.MethodPatch"
 	case *annotations.HttpRule_Custom:
-		return verb.Custom.Kind
+		return fmt.Sprintf("%q", verb.Custom.Kind)
 	default:
 		panic(fmt.Sprintf("google.api.HttpRule unexpected type %T", verb))
 	}
@@ -114,11 +115,17 @@ func (g *GatewayModule) pattern(m pgs.Method) string {
 		panic(fmt.Sprintf("google.api.HttpRule unexpected type %T", verb))
 	}
 
-	return "^" + patternRE.ReplaceAllString(pattern, `(?P<$1>[^/#?]+)`) + "[/#?]?$"
+	return fmt.Sprintf("%q", "^"+patternRE.ReplaceAllString(strings.TrimSuffix(pattern, "/"), `(?P<$1>[^/#?]+)`)+"[/#?]?$")
 }
 
-func (g *GatewayModule) handler(m pgs.Method) string {
-	return "HANDLER"
+func (g *GatewayModule) body(m pgs.Method) string {
+	rule := &annotations.HttpRule{}
+	m.Extension(annotations.E_Http, rule)
+
+	body := strings.ReplaceAll(rule.Body, "*", "")
+	body = strings.ReplaceAll(body, "/", ".")
+	body = strings.Trim(body, ".")
+	return fmt.Sprintf("%q", body)
 }
 
 // Extension for output.
@@ -131,6 +138,8 @@ package {{ package . }}
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -140,6 +149,7 @@ import (
 
 type gatewayRoute struct {
 	match    *regexp.Regexp
+	body     string
 	endpoint string
 }
 
@@ -161,17 +171,30 @@ func (g *gatewayRoute) try(path string) (url.Values, bool) {
 //
 // Does not support integer paths only the nested dot notation.
 //
-// Opinion:
-// * Google over engineered the hell out of this stuff.
+// OPINION:
+// * Google over engineered the hell out of the path stuff.
 // * JSON really needs an XML XPath style specification we can all agree on.
+//
+// TODO(shane): Golf or at least improve readability.
 func gatewaySetJSON(data interface{}, path string, value interface{}) error {
-	pp := strings.Split(path, ".")
-	for _, p := range pp[:len(path)-1] {
-		data = data.(map[string]interface{})[p] // TODO: Check cast.
+	parts := strings.Split(path, ".")
+	for index, name := range parts {
+		switch t := data.(type) {
+		case map[string]interface{}:
+			switch {
+			case len(parts) == index+1:
+				data.(map[string]interface{})[name] = value
+			case data.(map[string]interface{})[name] != nil:
+				data = data.(map[string]interface{})[name]
+			default:
+				data.(map[string]interface{})[name] = map[string]interface{}{}
+				data = data.(map[string]interface{})[name]
+			}
+		default:
+			// TODO(shane): Use the index to build a path partial to show where the heck in the tree you messed up.
+			return fmt.Errorf("got %T value but expected raw JSON object map[string]interface{}", t)
+		}
 	}
-
-	// TODO: Check cast.
-	data.(map[string]interface{})[pp[len(path)-1]] = value
 	return nil
 }
 
@@ -182,7 +205,7 @@ func {{ .Name }}Gateway() func(next http.Handler) http.Handler {
 
 {{ range .Methods }}
 {{ if hasHttpRule . }}
-routes[{{ method . | printf "%q" }}] = append(routes[{{ method . | printf "%q" }}], &gatewayRoute{regexp.MustCompile({{ pattern . | printf "%q" }}), {{ $service.Name }}PathPrefix + {{ .Name | printf "%q" }}})
+routes[{{ method . }}] = append(routes[{{ method . }}], &gatewayRoute{regexp.MustCompile({{ pattern . }}), {{ body . }}, {{ $service.Name }}PathPrefix + {{ .Name | printf "%q" }}})
 {{ end }}
 {{ end }}
 
@@ -206,30 +229,33 @@ routes[{{ method . | printf "%q" }}] = append(routes[{{ method . | printf "%q" }
 						r.URL.RawQuery = url.Values(params).Encode() + "&" + r.URL.RawQuery
 					}
 
-					if len(r.URL.Query()) > 0 {
-						// TODO(shane): Decode body, add query params to structure.
-						// TODO(shane): What are the documented rules regarding body: "*".
-						request := map[string]interface{}{}
-						if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-							http.Error(w, err.Error(), http.StatusBadRequest)
-							return
-						}
+					// dump, _ := httputil.DumpRequest(r, true)
+					// log.Printf("%s", dump)
 
-						// TODO(shane): Only supports dot notation on string keys.
-						query := r.URL.Query()
-						for path := range query {
-							// TODO(shane): Freak out on error!
-							gatewaySetJSON(request, path, query.Get(path))
-						}
-
-						// TODO(shane): Freak out on error!
-						encoded, _ := json.Marshal(request)
-
-						body := bytes.NewReader(encoded)
-						r.ContentLength = int64(body.Len())
-						r.Body = ioutil.NopCloser(body)
+					// TODO(shane): Decode body, add query params to structure.
+					// TODO(shane): What are the documented rules regarding body: "*".
+					request := map[string]interface{}{}
+					err := json.NewDecoder(r.Body).Decode(&request)
+					switch err {
+					case nil, io.EOF:
+						// Empty or parsed.
+					default:
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
 					}
 
+					query := r.URL.Query()
+					for path := range query {
+						// TODO(shane): Freak out on error!
+						gatewaySetJSON(request, strings.Trim(gr.body + "." + path, "."), query.Get(path))
+					}
+
+					// TODO(shane): Freak out on error!
+					encoded, _ := json.Marshal(request)
+
+					body := bytes.NewReader(encoded)
+					r.ContentLength = int64(body.Len())
+					r.Body = ioutil.NopCloser(body)
 					r.Method = http.MethodPost
 					r.URL.Path = gr.endpoint
 					h.ServeHTTP(w, r)
