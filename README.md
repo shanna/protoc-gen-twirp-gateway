@@ -1,6 +1,6 @@
 # protoc-gen-twirp-gateway
 
-*WARNING: This is alpha quality code, do not use in production.*
+**WARNING: This is alpha quality code, do not use in production.**
 
 Provide a RESTful gateway for your [Twirp RPC](https://github.com/twitchtv/twirp) Go services just as you would with
 [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway). A basic implementation of
