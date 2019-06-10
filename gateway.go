@@ -201,8 +201,9 @@ func gatewaySetJSON(data interface{}, path string, value interface{}) error {
 {{ range $index, $service := .Services }}
 // {{ .Name }}Gateway middleware rewrites requests and merges query params into a Twerp RPC request.
 func {{ .Name }}Gateway() func(next http.Handler) http.Handler {
-	routes := make(map[string][]*gatewayRoute)
 
+	// TODO(shane): Move to var to make testing easier?
+routes := make(map[string][]*gatewayRoute)
 {{ range .Methods }}
 {{ if hasHttpRule . }}
 routes[{{ method . }}] = append(routes[{{ method . }}], &gatewayRoute{regexp.MustCompile({{ pattern . }}), {{ body . }}, {{ $service.Name }}PathPrefix + {{ .Name | printf "%q" }}})
