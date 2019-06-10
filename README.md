@@ -7,9 +7,13 @@ defined gateways for your [Twirp RPC](https://github.com/twitchtv/twirp) Go serv
 
 ## Usage
 
-See Google's [gRPC transcoding](https://cloud.google.com/endpoints/docs/grpc/transcoding) documentation for the gRPC
+See Google's [gRPC transcoding](https://cloud.google.com/endpoints/docs/grpc/transcoding) documentation for gRPC
 examples if you haven't used [google.api.HttpRule](https://cloud.google.com/endpoints/docs/grpc-service-config/reference/rpc/google.api#google.api.HttpRule)
 before.
+
+```sh
+protoc --go_out="." --twirp_out="." --twirp-gateway_out="." $proto
+```
 
 ## Motivation
 
