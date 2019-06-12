@@ -7,4 +7,4 @@ test:
 
 .PHONY: clean
 clean:
-	rm -f _testdata/*.go
+	rm -f _testdata/service.*.go

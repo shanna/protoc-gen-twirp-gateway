@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-package shanna.twirp.gw.example.v1;
-option go_package = "example";
+package shanna.twirp.gw.main.v1;
+option go_package = "main";
 
 import "google/api/annotations.proto";
 
